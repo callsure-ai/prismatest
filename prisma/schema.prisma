@@ -1,0 +1,670 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AddressSource { 
+    manual 
+    google_api 
+    crm_import 
+}
+
+enum AgentStatus {
+  Active
+  Inactive
+}
+
+enum CallStatus {
+  Completed
+  Missed
+  Failed
+  InProgress
+}
+
+enum NotificationType {
+  info
+  warning
+  alert
+}
+
+enum RecipientType {
+  user
+  business
+  system
+}
+
+enum TicketStatus {
+  Open
+  InProgress
+  Resolved
+  Closed
+}
+
+enum TicketPriority {
+  Low
+  Medium
+  High
+  Urgent
+}
+
+enum EventType {
+  Call
+  Meeting
+  Webinar
+  Training
+}
+
+enum MessageStatus {
+  Sent
+  Delivered
+  Failed
+  Read
+}
+
+enum MessageDirection {
+  Incoming
+  Outgoing
+}
+
+enum IntegrationType {
+  CRM
+  WhatsApp
+  GoHighLevel
+  Slack
+  Email
+  Custom
+}
+
+enum SentimentLabel {
+  Positive
+  Neutral
+  Negative
+}
+
+enum WhatsAppMessageType {
+  Text
+  Image
+  Video
+  Document
+  Audio
+  Sticker
+  Location
+  Contact
+  Template
+}
+
+enum SeverityLevel {
+  Critical
+  High
+  Medium
+  Low
+  Info
+}
+
+enum TriggerSource {
+  AI
+  User
+  System
+  API
+  Scheduler
+}
+
+enum SubscriptionTier {
+  Free
+  Basic
+  Premium
+  Enterprise
+  Custom
+}
+
+enum ErrorCategory {
+  UserError
+  SystemError
+  NetworkError
+  DatabaseError
+  AuthenticationError
+  AuthorizationError
+  ValidationError
+}
+
+model User {
+  id            String          @id @default(cuid())
+  userUuid      String          @default(uuid()) @unique
+  firstName     String
+  lastName      String
+  email         String          @unique
+  phone         String?
+  passwordHash  String?
+  googleId      String?         @unique
+  isActive      Boolean         @default(true)
+  emailVerified DateTime?
+  image         String?
+  mfaEnabled    Boolean         @default(false)
+  lastLoginAt   DateTime?
+  deletedAt     DateTime?
+
+  accounts         Account[]
+  sessions         Session[]
+  businesses       Business[]      @relation("UserBusinesses")
+  businessUsers    BusinessUser[]  @relation("UserBusinessUsers")
+  apiKeys          ApiKey[]
+  auditLogs        AuditLog[]
+  events           Event[]
+  ticketsRaised    Ticket[]        @relation("UserTicketsRaised")
+  ticketsAssigned  Ticket[]        @relation("UserTicketsAssigned")
+  messagesSent     EmailLog[]      @relation("UserEmailsSent")
+  smsSent          TextMessageLog[] @relation("UserSmsSent")
+  whatsappMessages WhatsAppMessage[] @relation("UserWhatsAppMessages")
+  roles            Role[]          @relation("UserRoles")
+  aiAgentsCreated  AiAgent[]       @relation("UserCreatedAgents")
+  schedulesCreated Schedule[]      @relation("UserSchedules")
+
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@map("users")
+}
+
+model Account {
+  id                 Int       @id @default(autoincrement())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refreshToken       String?
+  accessToken        String?
+  expiresAt          Int?
+  tokenType          String?
+  scope              String?
+  idToken            String?
+  sessionState       String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id             Int       @id @default(autoincrement())
+  sessionToken   String    @unique
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt      DateTime
+  lastActivityAt DateTime  @default(now())
+  isActive       Boolean   @default(true)
+  ipAddress      String?
+  userAgent      String?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Business {
+  id                 Int              @id @default(autoincrement())
+  businessUuid       String           @default(uuid()) @unique
+  businessName       String
+  createdById        String
+  createdBy          User             @relation("UserBusinesses", fields: [createdById], references: [id], onDelete: Cascade)
+  googlePlaceId      String?
+  streetAddress      String
+  city               String
+  state              String
+  postalCode         String
+  country            String
+  latitude           Float?
+  longitude          Float?
+  isAutofill         Boolean          @default(false)
+  source             AddressSource    @default(manual)
+  timezone           String           @default("UTC")
+  primaryLanguage    String           @default("en")
+  supportedLanguages String[]         @default(["en"])
+  subscriptionTier   SubscriptionTier @default(Free)
+  maxAgents          Int              @default(1)
+  settings           Json?
+  operatingHours     Json?
+  industryType       String?
+  deletedAt          DateTime?
+
+  aiAgents          AiAgent[]
+  businessUsers     BusinessUser[]
+  apiKeys           ApiKey[]
+  integrations      Integration[]
+  agentCalls        AgentCall[]
+  events            Event[]
+  tickets           Ticket[]
+  schedules         Schedule[]
+  emailLogs         EmailLog[]
+  smsLogs           TextMessageLog[]
+  whatsappMessages  WhatsAppMessage[]
+  roles             Role[]
+  dataRetentionPolicies DataRetentionPolicy[]
+  qualityMetrics    QualityMetric[]
+  apiUsages         APIUsage[]
+
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  @@map("businesses")
+}
+
+model Role {
+  id          Int          @id @default(autoincrement())
+  roleUuid    String       @default(uuid()) @unique
+  businessId  Int
+  business    Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  roleName    String
+  description String?
+  permissions Json?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  businessUsers BusinessUser[]
+  users         User[]       @relation("UserRoles")
+
+  @@unique([businessId, roleName])
+  @@map("roles")
+}
+
+model BusinessUser {
+  id          Int       @id @default(autoincrement())
+  businessId  Int
+  business    Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation("UserBusinessUsers", fields: [userId], references: [id], onDelete: Cascade)
+  roleId      Int
+  role        Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([businessId, userId])
+  @@map("business_users")
+}
+
+model AiAgent {
+  id             Int           @id @default(autoincrement())
+  agentUuid      String        @default(uuid()) @unique
+  businessId     Int
+  business       Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentName      String
+  agentRole      String
+  agentSettings  Json?
+  createdById    String
+  createdBy      User          @relation("UserCreatedAgents", fields: [createdById], references: [id], onDelete: Cascade)
+  status         AgentStatus   @default(Active)
+  version        String?
+  voiceConfig    Json?
+  languageModels String[]
+  activeHours    Json?
+  responseTemplates Json?
+  callLimit      Int?
+  specializations String[]
+  deletedAt      DateTime?
+
+  agentCalls     AgentCall[]
+  qualityMetrics QualityMetric[]
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@map("ai_agents")
+}
+
+model AgentCall {
+  id                Int           @id @default(autoincrement())
+  callUuid          String        @default(uuid()) @unique
+  businessId        Int
+  business          Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentId           Int
+  agent             AiAgent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  callerName        String?
+  callerContact     String?
+  callDuration      Int
+  callStatus        CallStatus    @default(Completed)
+  callSummary       String?
+  callRecordingUrl  String?
+  deletedAt         DateTime?
+  timestamp         DateTime      @default(now())
+
+  sentimentScore    Float?
+  sentimentLabel    SentimentLabel?
+  s3RecordingUrl    String?
+  analysisData      Json?
+  transcriptionText String?
+  keyTopics         String[]
+  followUpRequired  Boolean       @default(false)
+  customerSatisfactionScore Float?
+  callIntent        String?
+  languageUsed      String?
+  waitTime          Int?
+  transferCount     Int           @default(0)
+
+  tickets           Ticket[]
+  schedules         Schedule[]
+  emailLogs         EmailLog[]
+  smsLogs           TextMessageLog[]
+  whatsappMessages  WhatsAppMessage[]
+  qualityMetrics    QualityMetric[]
+
+  @@index([businessId, timestamp, callStatus])
+  @@map("agent_calls")
+}
+
+model ApiKey {
+  id            Int        @id @default(autoincrement())
+  apiKeyHash    String     @unique
+  businessId    Int
+  business      Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  keyName       String
+  permissions   Json
+  isActive      Boolean    @default(true)
+  expiresAt     DateTime
+  lastUsedAt    DateTime?
+  usageCount    Int        @default(0)
+  rateLimit     Int?
+  dailyLimit    Int?
+  monthlyLimit  Int?
+  dailyUsage    Int        @default(0)
+  monthlyUsage  Int        @default(0)
+  lastResetAt   DateTime?
+  deletedAt     DateTime?
+  apiUsages     APIUsage[] @relation("ApiKeyUsages")
+
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  @@map("api_keys")
+}
+
+model APIUsage {
+  id              Int       @id @default(autoincrement())
+  businessId      Int
+  apiKeyId        Int
+  endpoint        String
+  requestCount    Int       @default(0)
+  lastRequestAt   DateTime?
+  dailyLimit      Int?
+  rateLimitReset  DateTime?
+
+  business        Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  apiKey          ApiKey     @relation("ApiKeyUsages", fields: [apiKeyId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, apiKeyId, endpoint])
+  @@index([businessId, endpoint])
+  @@map("api_usage")
+}
+
+model Integration {
+  id              Int            @id @default(autoincrement())
+  businessId      Int
+  business        Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type            IntegrationType
+  name            String
+  apiKey          String?
+  accessToken     String?
+  refreshToken    String?
+  tokenExpiry     DateTime?
+  config          Json?
+  isActive        Boolean        @default(true)
+  webhookUrl      String?
+  webhookSecret   String?
+  retryConfig     Json?
+  rateLimits      Json?
+  lastSyncStatus  String?
+  lastSyncError   String?
+  syncFrequency   String?
+  deletedAt       DateTime?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@map("integrations")
+}
+
+model Ticket {
+  id            Int        @id @default(autoincrement())
+  ticketUuid    String     @default(uuid()) @unique
+  businessId    Int
+  business      Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentCallId   Int?
+  agentCall     AgentCall? @relation(fields: [agentCallId], references: [id], onDelete: SetNull)
+  raisedById    String?
+  raisedBy      User?      @relation("UserTicketsRaised", fields: [raisedById], references: [id], onDelete: SetNull)
+  assignedToId  String?
+  assignedTo    User?      @relation("UserTicketsAssigned", fields: [assignedToId], references: [id], onDelete: SetNull)
+  status        TicketStatus @default(Open)
+  priority      TicketPriority @default(Medium)
+  subject       String
+  description   String?
+  tags          String[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  closedAt      DateTime?
+  deletedAt     DateTime?
+
+  @@map("tickets")
+}
+
+model Schedule {
+  id            Int        @id @default(autoincrement())
+  scheduleUuid  String     @default(uuid()) @unique
+  businessId    Int
+  business      Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentCallId   Int?
+  agentCall     AgentCall? @relation(fields: [agentCallId], references: [id], onDelete: SetNull)
+  scheduledById String?
+  scheduledBy   User?      @relation("UserSchedules", fields: [scheduledById], references: [id], onDelete: SetNull)
+  scheduledFor  String
+  eventType     EventType
+  startTime     DateTime
+  endTime       DateTime?
+  location      String?
+  details       String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  @@map("schedules")
+}
+
+model EmailLog {
+  id             Int        @id @default(autoincrement())
+  emailUuid      String     @default(uuid()) @unique
+  businessId     Int
+  business       Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentCallId    Int?
+  agentCall      AgentCall? @relation(fields: [agentCallId], references: [id], onDelete: SetNull)
+  sentById       String?
+  sentBy         User?      @relation("UserEmailsSent", fields: [sentById], references: [id], onDelete: SetNull)
+  recipientEmail String
+  subject        String
+  body           String
+  status         MessageStatus @default(Sent)
+  sentAt         DateTime      @default(now())
+  deliveredAt    DateTime?
+  readAt         DateTime?
+  errorMessage   String?
+  deletedAt      DateTime?
+
+  @@map("email_logs")
+}
+
+model TextMessageLog {
+  id              Int        @id @default(autoincrement())
+  messageUuid     String     @default(uuid()) @unique
+  businessId      Int
+  business        Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentCallId     Int?
+agentCall      AgentCall? @relation(fields: [agentCallId], references: [id], onDelete: SetNull)
+  sentById       String?
+  sentBy         User?      @relation("UserSmsSent", fields: [sentById], references: [id], onDelete: SetNull)
+  recipientNumber String
+  messageContent  String
+  status          MessageStatus @default(Sent)
+  sentAt          DateTime      @default(now())
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  errorMessage    String?
+  deletedAt       DateTime?
+
+  @@map("text_message_logs")
+}
+
+model WhatsAppMessage {
+  id              Int        @id @default(autoincrement())
+  messageUuid     String     @default(uuid()) @unique
+  businessId      Int
+  business        Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentCallId     Int?
+  agentCall       AgentCall? @relation(fields: [agentCallId], references: [id], onDelete: SetNull)
+  sentById        String?
+  sentBy          User?      @relation("UserWhatsAppMessages", fields: [sentById], references: [id], onDelete: SetNull)
+  recipientNumber String
+  messageContent  String?
+  messageType     WhatsAppMessageType
+  mediaUrl        String?
+  mediaCaption    String?
+  direction       MessageDirection
+  status          MessageStatus @default(Sent)
+  timestamp       DateTime      @default(now())
+  deliveredAt     DateTime?
+  readAt          DateTime?
+  errorMessage    String?
+  deletedAt       DateTime?
+
+  @@index([businessId, messageType, timestamp])
+  @@map("whatsapp_messages")
+}
+
+model AuditLog {
+  id            Int       @id @default(autoincrement())
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action        String
+  outcome       String
+  resourceType  String?
+  resourceId    Int?
+  details       Json?
+  ipAddress     String?
+  userAgent     String?
+  timestamp     DateTime   @default(now())
+
+  @@index([userId, timestamp])
+  @@map("audit_logs")
+}
+
+model Notification {
+  id                Int              @id @default(autoincrement())
+  recipientType     RecipientType
+  recipientId       Int?
+  localizedMessages Json
+  notificationType  NotificationType @default(info)
+  isRead            Boolean          @default(false)
+  metadata          Json?
+  createdAt         DateTime         @default(now())
+  deletedAt         DateTime?
+
+  @@index([recipientType, recipientId])
+  @@index([isRead, createdAt])
+  @@map("notifications")
+}
+
+model ErrorLog {
+  id             Int            @id @default(autoincrement())
+  errorCode      String?
+  errorMessage   String
+  stackTrace     String?
+  module         String?
+  details        Json?
+  severity       SeverityLevel
+  errorCategory  ErrorCategory?
+  resolved       Boolean        @default(false)
+  resolvedAt     DateTime?
+  resolvedBy     String?
+  affectedUsers  Int?
+  timestamp      DateTime       @default(now())
+
+  @@index([severity, timestamp])
+  @@map("error_logs")
+}
+
+model DataRetentionPolicy {
+  id             Int       @id @default(autoincrement())
+  businessId     Int
+  business       Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  dataType       String
+  retentionDays  Int
+  autoDelete     Boolean   @default(true)
+  lastCleanup    DateTime?
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([businessId, dataType])
+  @@map("data_retention_policies")
+}
+
+model QualityMetric {
+  id              Int       @id @default(autoincrement())
+  businessId      Int
+  business        Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  agentId         Int
+  agent           AiAgent   @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  callId          Int
+  agentCall       AgentCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  metricType      String
+  score           Float
+  feedback        String?
+  reviewedBy      String?
+  reviewedAt      DateTime?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([agentId, metricType])
+  @@map("quality_metrics")
+}
+
+model Event {
+  id            Int           @id @default(autoincrement())
+  eventType     String
+  userId        String?
+  user          User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  businessId    Int?
+  business      Business?     @relation(fields: [businessId], references: [id], onDelete: SetNull)
+  triggerSource TriggerSource
+  details       Json?
+  timestamp     DateTime      @default(now())
+
+  @@index([eventType, timestamp])
+  @@index([triggerSource, timestamp])
+  @@map("events")
+}
